@@ -1,0 +1,158 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  format-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install clang-format 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository -y "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-18 100
+          clang-format --version
+      - name: check format
+        run: make check-format
+
+  build-x86_64:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cxx: g++, cc: gcc }
+          - { cxx: clang++, cc: clang }
+    env:
+      CC: ${{ matrix.compiler.cc }}
+      CXX: ${{ matrix.compiler.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: cpu info
+        run: |
+          cat /proc/cpuinfo | grep -E "model name|flags" | head -3
+          if grep -q avx2 /proc/cpuinfo; then echo "AVX2 supported"; fi
+      - name: configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: build
+        run: cmake --build build -j
+      - name: ctest
+        run: ctest --test-dir build --output-on-failure
+        env:
+          COLUMNSTORE_INTEGRATION_ROWS: "1000000"
+
+  build-x86_64-asan:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCOLUMNSTORE_ENABLE_ASAN=ON -DCMAKE_CXX_COMPILER=clang++
+      - name: build
+        run: cmake --build build-asan -j
+      - name: ctest
+        run: ctest --test-dir build-asan --output-on-failure
+        env:
+          COLUMNSTORE_INTEGRATION_ROWS: "500000"
+          ASAN_OPTIONS: "detect_leaks=1:halt_on_error=1"
+          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
+
+  avx2-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: confirm AVX2 on runner
+        run: grep -q avx2 /proc/cpuinfo
+      - name: configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: build
+        run: cmake --build build -j
+      - name: run unit tests (AVX2 path active)
+        run: ./build/columnstore_unit_tests
+      - name: run sample query with AVX2
+        run: ./build/columnstore --rows 1000000 --threshold 1000
+
+  scalar-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S . -B build-scalar -DCMAKE_BUILD_TYPE=Release -DCOLUMNSTORE_FORCE_SCALAR=ON
+      - name: build
+        run: cmake --build build-scalar -j
+      - name: run unit tests (scalar path)
+        env:
+          COLUMNSTORE_FORCE_SCALAR: "1"
+        run: ./build-scalar/columnstore_unit_tests
+      - name: ctest (scalar path)
+        env:
+          COLUMNSTORE_INTEGRATION_ROWS: "500000"
+          COLUMNSTORE_FORCE_SCALAR: "1"
+        run: ctest --test-dir build-scalar --output-on-failure
+
+  fuzz-smoke:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: configure
+        run: cmake -S . -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DCOLUMNSTORE_BUILD_FUZZ=ON -DCMAKE_CXX_COMPILER=clang++
+      - name: build fuzzers
+        run: cmake --build build-fuzz --target rle_fuzz filter_fuzz -j
+      - name: rle_fuzz smoke
+        run: ./build-fuzz/rle_fuzz -runs=5000 -max_total_time=30 -timeout=5
+      - name: filter_fuzz smoke
+        run: ./build-fuzz/filter_fuzz -runs=5000 -max_total_time=30 -timeout=5
+
+  bench-smoke:
+    runs-on: ubuntu-22.04
+    needs: [build-x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: build bench
+        run: cmake --build build --target scan_bench filter_bench aggregate_bench -j
+      - name: scan bench smoke
+        env:
+          COLUMNSTORE_BENCH_ROWS: "1000000"
+          COLUMNSTORE_BENCH_ITERS: "3"
+        run: |
+          set -e
+          out=$(./build/scan_bench)
+          echo "$out"
+          # Pull the M values/sec line and assert >= 100M v/s floor.
+          mvs=$(echo "$out" | awk '/throughput/ && /M values\/sec/ { print $(NF-2); exit }')
+          echo "best throughput M v/s: $mvs"
+          awk -v v="$mvs" 'BEGIN { if (v+0 < 100.0) { print "FAIL: throughput below 100M v/s floor"; exit 1 } else { print "PASS" } }'
+      - name: filter bench smoke
+        env:
+          COLUMNSTORE_BENCH_ROWS: "1000000"
+          COLUMNSTORE_BENCH_ITERS: "3"
+        run: ./build/filter_bench
+      - name: aggregate bench smoke
+        env:
+          COLUMNSTORE_BENCH_ROWS: "1000000"
+          COLUMNSTORE_BENCH_ITERS: "3"
+        run: ./build/aggregate_bench
+
+  docker:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: build image (x86_64)
+        run: docker build -t columnstore:ci .
+      - name: smoke run
+        run: docker run --rm columnstore:ci --rows 200000 --threshold 1000
