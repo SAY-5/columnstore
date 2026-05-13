@@ -209,6 +209,33 @@ A ~3% improvement, within noise. Quadrupling per-column metadata size to pad
 to a cache line is not worth it for this workload; the data path (the actual
 column buffers) already dominates the loads.
 
+## Dictionary encoding (low-cardinality columns)
+
+`DictColumn<T>` is a second compression mode (alongside RLE) for columns whose
+distinct value count is small. When `cardinality <= 256` the column stores:
+
+- `dict`: a small contiguous array of the distinct values, in insertion order
+- `codes`: a `uint8_t` buffer with one byte per row, indexing into `dict`
+
+This pays off in two places:
+
+1. `CountDistinct` is O(K) instead of O(N). On a cardinality-8 column with
+   1M rows, the dict path runs in nanoseconds (it just reports the dict
+   size) while the unordered_set scalar fallback takes ~6 ms. The local
+   measurement in `dict_test.cpp` shows the dict path at effectively 0 ns
+   versus 5.99 ms for the scalar fallback (>>1000x).
+2. Equality filter on dict codes uses `_mm256_cmpeq_epi8` on the byte
+   buffer, which is 4x the throughput of the int32 `_mm256_cmpeq_epi32`
+   path because each instruction processes 32 lanes instead of 8.
+
+The codes-buffer also halves to a quarter of the original column size
+(4 bytes -> 1 byte per row) on int32 columns, and is even larger savings
+on string columns where each row was a pointer + length pair.
+
+`DictColumn::try_build(raw)` returns `std::nullopt` when cardinality
+exceeds the byte-coded ceiling. The encoder is one pass over the data;
+the runtime cost is amortized over every subsequent scan/filter/count.
+
 ## What this is not
 
 - No SQL frontend (deferred to v4). The pipeline is built from C++.

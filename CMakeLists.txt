@@ -96,6 +96,7 @@ add_library(columnstore_core STATIC
     src/core/column.cpp
     src/core/batch.cpp
     src/core/schema.cpp
+    src/core/dict.cpp
     src/rle/encoder.cpp
     src/rle/decoder.cpp
     src/simd/cpu_detect.cpp
@@ -104,6 +105,7 @@ add_library(columnstore_core STATIC
     src/exec/source.cpp
     src/exec/filter.cpp
     src/exec/aggregate.cpp
+    src/exec/count_distinct.cpp
     src/exec/sink.cpp
     src/exec/pipeline.cpp
     src/obs/histogram.cpp
@@ -114,6 +116,7 @@ if(COLUMNSTORE_HAS_AVX2)
     add_library(columnstore_avx2 OBJECT
         src/simd/filter_int32_avx2.cpp
         src/simd/sum_int32_avx2.cpp
+        src/simd/filter_dict_eq_avx2.cpp
     )
     target_compile_options(columnstore_avx2 PRIVATE -mavx2)
     target_include_directories(columnstore_avx2 PUBLIC src)
@@ -136,6 +139,7 @@ if(COLUMNSTORE_BUILD_TESTS)
         tests/unit/aggregate_test.cpp
         tests/unit/pipeline_test.cpp
         tests/unit/property_test.cpp
+        tests/unit/dict_test.cpp
     )
     target_link_libraries(columnstore_unit_tests PRIVATE columnstore_core gtest_main gmock)
     add_test(NAME columnstore_unit_tests COMMAND columnstore_unit_tests)
