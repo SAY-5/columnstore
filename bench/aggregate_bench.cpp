@@ -1,0 +1,71 @@
+#include <cstdint>
+#include <cstdio>
+#include <vector>
+
+#include "bench_common.h"
+#include "core/batch.h"
+#include "obs/histogram.h"
+#include "simd/cpu_detect.h"
+#include "simd/kernels.h"
+
+using namespace columnstore;
+using namespace columnstore::bench;
+
+int main() {
+    const std::size_t rows = env_rows(100'000'000);
+    const int iters = env_iters(5);
+
+    std::printf("aggregate_bench: simd-path=%s rows=%zu iters=%d\n",
+                simd_path_name(active_simd_path()),
+                rows,
+                iters);
+
+    auto data = synth_int32(rows, 0xC01D5EEDu);
+
+    auto run_once = [&](bool use_avx2) -> uint64_t {
+        clobber();
+        const uint64_t t0 = now_ns();
+        int64_t s = 0;
+#if defined(COLUMNSTORE_COMPILED_WITH_AVX2)
+        if (use_avx2 && active_simd_path() == SimdPath::Avx2) {
+            s = sum_int32_avx2(data.data(), rows, nullptr);
+        } else {
+            s = sum_int32_scalar(data.data(), rows, nullptr);
+        }
+#else
+        (void)use_avx2;
+        s = sum_int32_scalar(data.data(), rows, nullptr);
+#endif
+        const uint64_t t1 = now_ns();
+        sink(s);
+        return t1 - t0;
+    };
+
+    run_once(true);
+    run_once(false);
+
+    LatencyHistogram h_avx;
+    LatencyHistogram h_sc;
+    for (int i = 0; i < iters; ++i) {
+        h_avx.add(run_once(true));
+    }
+    for (int i = 0; i < iters; ++i) {
+        h_sc.add(run_once(false));
+    }
+
+    auto report = [&](const char* label, LatencyHistogram& h) {
+        const double best = static_cast<double>(h.min()) / 1e9;
+        const double tput = static_cast<double>(rows) / best;
+        std::printf("  %-8s best=%.3f ms  %.3f B v/s  p50=%llu p95=%llu p99=%llu ns\n",
+                    label,
+                    best * 1e3,
+                    tput / 1e9,
+                    static_cast<unsigned long long>(h.percentile(50)),
+                    static_cast<unsigned long long>(h.percentile(95)),
+                    static_cast<unsigned long long>(h.percentile(99)));
+    };
+    std::printf("aggregate_bench results:\n");
+    report("avx2", h_avx);
+    report("scalar", h_sc);
+    return 0;
+}
