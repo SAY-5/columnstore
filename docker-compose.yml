@@ -1,0 +1,5 @@
+services:
+  columnstore:
+    build: .
+    image: columnstore:local
+    command: ["--rows", "1000000", "--threshold", "1000"]
