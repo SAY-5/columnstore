@@ -119,33 +119,52 @@ docker run --rm columnstore --rows 1000000 --threshold 1000
 
 ## Benchmarks
 
-Real numbers from a local run, captured in
+Real numbers, captured in
 [`bench/results/bench_local.json`](bench/results/bench_local.json).
-This run was on Apple Silicon (M-series, arm64). The runtime picked the
-scalar path because AVX2 is x86-only; clang's auto-vectorizer turned the
-scalar sum and filter loops into NEON, so reported throughput is high. The
-CI on `ubuntu-22.04` x86_64 runners exercises the hand-written AVX2 path.
 
-| bench           | rows  | path   | best ms | throughput    | p50 ns     | p99 ns     |
-| --------------- | ----- | ------ | ------- | ------------- | ---------- | ---------- |
-| scan (full pipe)| 100M  | scalar | 74.4    | 1.34 B v/s    | 75,236,041 | 75,638,000 |
-| filter kernel   | 100M  | scalar | 42.5    | 2.35 B v/s    | 42,914,875 | 43,146,666 |
-| aggregate (sum) | 100M  | scalar | 6.7     | 14.94 B v/s   | 6,724,125  | 6,774,209  |
+### x86_64 (GitHub Actions ubuntu-22.04, 1M rows, cache-resident)
 
-Honest reading of the 4.1B values/sec claim. The host above did not hit it
-on the scan pipeline; the working set is 400 MB of int32 (well outside any
-cache), and the loop is dominated by DRAM bandwidth (~10 GB/s effective per
-core). The 4.1B/s target is realistic when:
+This is the CI `bench-smoke` job; numbers come from the actual run that
+gates this README. The AVX2 path is the hand-written intrinsic kernel.
 
-- the input is L1- or L2-resident (a few thousand to a few hundred thousand
-  rows, so the bench harness keeps the buffer hot across iterations), and
-- AVX2 saturates the load ports on a Skylake-class core.
+| bench           | rows | path   | best ms | throughput    | p50 ns  |
+| --------------- | ---- | ------ | ------- | ------------- | ------- |
+| scan (full pipe)| 1M   | avx2   | 0.762   | 1.312 B v/s   | 778,432 |
+| filter kernel   | 1M   | avx2   | 0.128   | 7.788 B v/s   | 128,820 |
+| filter kernel   | 1M   | scalar | 1.015   | 0.985 B v/s   | 1,016,364 |
+| aggregate (sum) | 1M   | avx2   | 0.133   | 7.539 B v/s   | 133,047 |
+| aggregate (sum) | 1M   | scalar | 0.175   | 5.722 B v/s   | 174,759 |
 
-The aggregate kernel approaches that order at 14.9 B v/s because the
-streaming-load + 64-bit-accumulate inner loop pipelines very well; clang
-unrolls and vectorizes the scalar version into NEON on ARM, which is why
-the AVX2-vs-scalar gap is small on M-series. The CI bench-smoke at 1M rows
-asserts a 100M v/s floor.
+AVX2 vs scalar speedup: filter 7.9x, aggregate 1.32x. (The aggregate gap
+is small because `gcc -O3` auto-vectorizes the scalar sum loop into AVX2;
+the filter loop has a bitmap-pack step the auto-vectorizer can't
+synthesize from straight-line code.)
+
+### arm64 (Apple Silicon, 100M rows, DRAM-bound)
+
+The runtime picked the scalar path because AVX2 is x86-only. Clang's
+auto-vectorizer turned the scalar sum and filter into NEON, so reported
+throughput is high; this isn't the hand-written intrinsic path.
+
+| bench           | rows  | path   | best ms | throughput    | p50 ns     |
+| --------------- | ----- | ------ | ------- | ------------- | ---------- |
+| scan (full pipe)| 100M  | scalar | 74.4    | 1.344 B v/s   | 75,236,041 |
+| filter kernel   | 100M  | scalar | 42.5    | 2.352 B v/s   | 42,914,875 |
+| aggregate (sum) | 100M  | scalar | 6.7     | 14.94 B v/s   | 6,724,125  |
+
+Honest reading of the 4.1B values/sec claim:
+
+- The filter kernel hits 7.788 B v/s on x86_64 at 1M rows (cache-resident),
+  exceeding the 4.1 B/s target by 1.9x.
+- The aggregate kernel hits 7.539 B v/s under the same conditions.
+- The full-pipeline scan does not hit it. Per-batch bitmap allocation and
+  pipeline plumbing impose overhead the raw kernels don't see; at 1M rows
+  the pipeline runs at 1.31 B v/s.
+- At 100M rows (400 MB of int32, well outside any cache) DRAM bandwidth
+  is the bottleneck on every architecture and throughput drops to
+  ~1.3 B v/s.
+
+CI `bench-smoke` asserts a 100M v/s floor and currently exceeds it by 13x.
 
 ## What this is not
 
