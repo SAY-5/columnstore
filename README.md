@@ -209,6 +209,51 @@ A ~3% improvement, within noise. Quadrupling per-column metadata size to pad
 to a cache line is not worth it for this workload; the data path (the actual
 column buffers) already dominates the loads.
 
+## SQL quickstart
+
+A minimal SQL frontend ships in `src/sql/`. Grammar:
+
+```
+SELECT col1 [, AGG(col2) ...]
+  FROM t
+  [WHERE col3 op literal]
+  [GROUP BY col1]
+
+AGG ::= SUM | COUNT | MIN | MAX | AVG | COUNT_DISTINCT
+op  ::= = | != | < | <= | > | >=
+```
+
+The hand-rolled recursive-descent parser uses four token kinds: identifier,
+number, string literal, operator. The query planner walks the AST and folds
+it into a single pass over the CSV-loaded `CsvTable`.
+
+CSV format is type-annotated:
+
+```
+# types: int32, int32, double
+id, bucket, amount
+1, 0, 10.5
+2, 1, 20.3
+3, 0, 5.0
+4, 2, 12.0
+5, 1, 8.7
+```
+
+End-to-end:
+
+```
+$ ./build/columnstore --sql /tmp/sample.csv \
+    "SELECT bucket, SUM(amount) FROM t GROUP BY bucket"
+bucket  SUM(amount)
+0       15.5
+1       29
+2       12
+```
+
+CSV ingest covers `int32`, `int64`, `double`, and `string`. Parquet/Arrow
+ingest is a deferred follow-up; the CSV path keeps CI hermetic without
+pulling Arrow's transitive build graph.
+
 ## Dictionary encoding (low-cardinality columns)
 
 `DictColumn<T>` is a second compression mode (alongside RLE) for columns whose

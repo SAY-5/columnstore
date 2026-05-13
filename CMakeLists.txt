@@ -109,6 +109,8 @@ add_library(columnstore_core STATIC
     src/exec/sink.cpp
     src/exec/pipeline.cpp
     src/obs/histogram.cpp
+    src/io/csv.cpp
+    src/sql/sql.cpp
 )
 target_include_directories(columnstore_core PUBLIC src)
 
@@ -140,6 +142,7 @@ if(COLUMNSTORE_BUILD_TESTS)
         tests/unit/pipeline_test.cpp
         tests/unit/property_test.cpp
         tests/unit/dict_test.cpp
+        tests/unit/sql_test.cpp
     )
     target_link_libraries(columnstore_unit_tests PRIVATE columnstore_core gtest_main gmock)
     add_test(NAME columnstore_unit_tests COMMAND columnstore_unit_tests)
