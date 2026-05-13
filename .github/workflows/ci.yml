@@ -185,7 +185,10 @@ jobs:
           # v1 gate: +5pp above the v0 implicit floor. v0 had no coverage
           # job; this is the first published number. Floor set to 70%
           # (rounded down) so the gate is enforceable on every PR.
-          pct=$(awk -F'[ %]+' '/^[[:space:]]*lines/ {print $3}' build-cov/coverage.summary | tail -1)
+          pct=$(grep -E 'Total:\|' build-cov/coverage.summary | head -1 | awk -F'[|%]' '{print $2}' | tr -d ' ')
+          if [ -z "$pct" ]; then
+            pct=$(grep -oE '[0-9]+\.[0-9]+%' build-cov/coverage.summary | head -1 | tr -d '%')
+          fi
           echo "line coverage: $pct%"
           awk -v p="$pct" 'BEGIN { if (p+0 < 70.0) { print "FAIL: coverage " p "% below 70% floor"; exit 1 } else { print "PASS: coverage " p "% >= 70%" } }'
 
