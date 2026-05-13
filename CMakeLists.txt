@@ -44,6 +44,7 @@ option(COLUMNSTORE_BUILD_BENCH "Build benchmarks" ON)
 option(COLUMNSTORE_BUILD_FUZZ "Build libFuzzer harnesses (clang only)" OFF)
 option(COLUMNSTORE_ENABLE_ASAN "Enable AddressSanitizer + UBSan" OFF)
 option(COLUMNSTORE_FORCE_SCALAR "Force scalar path even on x86_64" OFF)
+option(COLUMNSTORE_ENABLE_COVERAGE "Build with gcov instrumentation" OFF)
 
 # ---------------------------------------------------------------------------
 # Global flags
@@ -65,6 +66,11 @@ endif()
 
 if(COLUMNSTORE_FORCE_SCALAR)
     add_compile_definitions(COLUMNSTORE_FORCE_SCALAR=1)
+endif()
+
+if(COLUMNSTORE_ENABLE_COVERAGE)
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -129,6 +135,7 @@ if(COLUMNSTORE_BUILD_TESTS)
         tests/unit/filter_test.cpp
         tests/unit/aggregate_test.cpp
         tests/unit/pipeline_test.cpp
+        tests/unit/property_test.cpp
     )
     target_link_libraries(columnstore_unit_tests PRIVATE columnstore_core gtest_main gmock)
     add_test(NAME columnstore_unit_tests COMMAND columnstore_unit_tests)

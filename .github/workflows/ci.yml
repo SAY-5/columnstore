@@ -112,9 +112,9 @@ jobs:
       - name: build fuzzers
         run: cmake --build build-fuzz --target rle_fuzz filter_fuzz -j
       - name: rle_fuzz smoke
-        run: ./build-fuzz/rle_fuzz -runs=5000 -max_total_time=30 -timeout=5
+        run: ./build-fuzz/rle_fuzz -runs=10000 -max_total_time=60 -timeout=5
       - name: filter_fuzz smoke
-        run: ./build-fuzz/filter_fuzz -runs=5000 -max_total_time=30 -timeout=5
+        run: ./build-fuzz/filter_fuzz -runs=10000 -max_total_time=60 -timeout=5
 
   bench-smoke:
     runs-on: ubuntu-22.04
@@ -147,6 +147,42 @@ jobs:
           COLUMNSTORE_BENCH_ROWS: "1000000"
           COLUMNSTORE_BENCH_ITERS: "3"
         run: ./build/aggregate_bench
+
+  coverage:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install lcov
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lcov
+      - name: configure (gcov)
+        run: cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=Debug -DCOLUMNSTORE_ENABLE_COVERAGE=ON
+      - name: build
+        run: cmake --build build-cov -j
+      - name: run tests
+        run: ctest --test-dir build-cov --output-on-failure
+        env:
+          COLUMNSTORE_INTEGRATION_ROWS: "200000"
+      - name: collect coverage
+        run: |
+          lcov --capture --directory build-cov --output-file build-cov/coverage.info \
+            --rc lcov_branch_coverage=0 --ignore-errors mismatch,negative,gcov,source,unused
+          lcov --remove build-cov/coverage.info \
+            '/usr/*' '*/_deps/*' '*/tests/*' '*/bench/*' \
+            --output-file build-cov/coverage.filtered.info \
+            --rc lcov_branch_coverage=0 --ignore-errors unused
+          lcov --list build-cov/coverage.filtered.info \
+            --rc lcov_branch_coverage=0 | tee build-cov/coverage.summary
+      - name: enforce coverage floor
+        run: |
+          set -e
+          # v1 gate: +5pp above the v0 implicit floor. v0 had no coverage
+          # job; this is the first published number. Floor set to 70%
+          # (rounded down) so the gate is enforceable on every PR.
+          pct=$(awk -F'[ %]+' '/^[[:space:]]*lines/ {print $3}' build-cov/coverage.summary | tail -1)
+          echo "line coverage: $pct%"
+          awk -v p="$pct" 'BEGIN { if (p+0 < 70.0) { print "FAIL: coverage " p "% below 70% floor"; exit 1 } else { print "PASS: coverage " p "% >= 70%" } }'
 
   docker:
     runs-on: ubuntu-22.04

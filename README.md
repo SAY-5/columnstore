@@ -86,7 +86,12 @@ while (i + 64 <= n) {
 
 Full source: `src/simd/filter_int32_avx2.cpp`. The scalar mirror is in
 `src/simd/filter_int32_scalar.cpp`; both are tested against each other on
-1000 random inputs in `tests/unit/filter_test.cpp`.
+1000 random inputs in `tests/unit/filter_test.cpp` and on a wider
+cross-product (1000+ random `(values, threshold)` pairs per operator,
+boundary thresholds INT_MIN/-1/0/1/INT_MAX, fixed bit patterns
+0x00/0xFF/0xAA/0x55, tail sizes 1..71 and 4090..4097) in
+`tests/unit/property_test.cpp`. The fuzz harnesses run 10000 iterations
+per harness (rle, filter) on every CI build.
 
 ## Building
 
