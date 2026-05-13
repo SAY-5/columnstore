@@ -1,0 +1,5 @@
+{"bench":"filter","op":"filter_gt_avx2","simd":"scalar","rows":1000000,"iters":5,"best_ns":427667,"p50_ns":429916,"p95_ns":432292,"p99_ns":432292,"throughput_b_v_s":2.338268,"label":"1m"}
+{"bench":"filter","op":"filter_gt_scalar","simd":"scalar","rows":1000000,"iters":5,"best_ns":416458,"p50_ns":425750,"p95_ns":427583,"p99_ns":427583,"throughput_b_v_s":2.401203,"label":"1m"}
+{"bench":"aggregate","op":"sum_avx2","simd":"scalar","rows":1000000,"iters":5,"best_ns":46750,"p50_ns":47542,"p95_ns":47708,"p99_ns":47708,"throughput_b_v_s":21.390374,"label":"1m"}
+{"bench":"aggregate","op":"sum_scalar","simd":"scalar","rows":1000000,"iters":5,"best_ns":46958,"p50_ns":48041,"p95_ns":48083,"p99_ns":48083,"throughput_b_v_s":21.295626,"label":"1m"}
+{"bench":"scan","op":"scan","simd":"scalar","rows":1000000,"iters":5,"best_ns":737709,"p50_ns":756792,"p95_ns":757459,"p99_ns":757459,"throughput_b_v_s":1.355548,"label":"1m"}

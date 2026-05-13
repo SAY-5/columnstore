@@ -181,6 +181,10 @@ if(COLUMNSTORE_BUILD_BENCH)
     target_link_libraries(aggregate_bench PRIVATE columnstore_core)
     target_include_directories(aggregate_bench PRIVATE bench)
 
+    add_executable(padding_bench bench/padding_bench.cpp)
+    target_link_libraries(padding_bench PRIVATE columnstore_core)
+    target_include_directories(padding_bench PRIVATE bench)
+
     add_executable(generate_data bench/data/generate.cpp)
     target_link_libraries(generate_data PRIVATE columnstore_core)
 endif()

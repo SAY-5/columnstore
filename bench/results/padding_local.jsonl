@@ -1,0 +1,2 @@
+{"bench":"padding","op":"padding_default","simd":"scalar","rows":12800000,"iters":15,"sizeof_col":16,"best_ns":32580375,"p50_ns":33398833,"p95_ns":34458541,"p99_ns":34458541,"throughput_b_v_s":0.392875,"label":"local_arm_scalar"}
+{"bench":"padding","op":"padding_64b","simd":"scalar","rows":12800000,"iters":15,"sizeof_col":64,"best_ns":31477625,"p50_ns":32043417,"p95_ns":34080250,"p99_ns":34080250,"throughput_b_v_s":0.406638,"label":"local_arm_scalar"}

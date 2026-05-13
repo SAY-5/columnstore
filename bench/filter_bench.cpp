@@ -68,5 +68,34 @@ int main() {
     std::printf("filter_bench results:\n");
     report("avx2", h_avx);
     report("scalar", h_sc);
+
+    if (const char* path = env_json_out()) {
+        FILE* f = std::fopen(path, "a");
+        if (f) {
+            auto emit = [&](const char* op_label, LatencyHistogram& h) {
+                const double best = static_cast<double>(h.min()) / 1e9;
+                const double tput = static_cast<double>(rows) / best;
+                std::fprintf(f,
+                             "{\"bench\":\"filter\",\"op\":\"filter_gt_%s\",\"simd\":\"%s\","
+                             "\"rows\":%zu,\"iters\":%d,\"best_ns\":%llu,\"p50_ns\":%llu,"
+                             "\"p95_ns\":%llu,\"p99_ns\":%llu,\"throughput_b_v_s\":%.6f,"
+                             "\"label\":\"%s\"}\n",
+                             op_label,
+                             simd_path_name(active_simd_path()),
+                             rows,
+                             iters,
+                             static_cast<unsigned long long>(h.min()),
+                             static_cast<unsigned long long>(h.percentile(50)),
+                             static_cast<unsigned long long>(h.percentile(95)),
+                             static_cast<unsigned long long>(h.percentile(99)),
+                             tput / 1e9,
+                             env_bench_label("default"));
+                (void)best;
+            };
+            emit("avx2", h_avx);
+            emit("scalar", h_sc);
+            std::fclose(f);
+        }
+    }
     return 0;
 }

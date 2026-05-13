@@ -1,0 +1,5 @@
+{"bench":"filter","op":"filter_gt_avx2","simd":"scalar","rows":100000000,"iters":5,"best_ns":42356667,"p50_ns":43903875,"p95_ns":44006125,"p99_ns":44006125,"throughput_b_v_s":2.360903,"label":"100m"}
+{"bench":"filter","op":"filter_gt_scalar","simd":"scalar","rows":100000000,"iters":5,"best_ns":41891500,"p50_ns":42123042,"p95_ns":42143334,"p99_ns":42143334,"throughput_b_v_s":2.387119,"label":"100m"}
+{"bench":"aggregate","op":"sum_avx2","simd":"scalar","rows":100000000,"iters":5,"best_ns":7482542,"p50_ns":7787000,"p95_ns":7890125,"p99_ns":7890125,"throughput_b_v_s":13.364442,"label":"100m"}
+{"bench":"aggregate","op":"sum_scalar","simd":"scalar","rows":100000000,"iters":5,"best_ns":6844500,"p50_ns":7067709,"p95_ns":7626375,"p99_ns":7626375,"throughput_b_v_s":14.610271,"label":"100m"}
+{"bench":"scan","op":"scan","simd":"scalar","rows":100000000,"iters":5,"best_ns":72989041,"p50_ns":75846750,"p95_ns":76313500,"p99_ns":76313500,"throughput_b_v_s":1.370069,"label":"100m"}

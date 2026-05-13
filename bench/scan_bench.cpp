@@ -10,6 +10,39 @@
 using namespace columnstore;
 using namespace columnstore::bench;
 
+namespace {
+void emit_json(const char* path,
+               std::size_t rows,
+               int iters,
+               double best_secs,
+               uint64_t p50,
+               uint64_t p95,
+               uint64_t p99) {
+    if (!path) {
+        return;
+    }
+    FILE* f = std::fopen(path, "a");
+    if (!f) {
+        return;
+    }
+    const double tput = static_cast<double>(rows) / best_secs;
+    std::fprintf(f,
+                 "{\"bench\":\"scan\",\"op\":\"scan\",\"simd\":\"%s\",\"rows\":%zu,"
+                 "\"iters\":%d,\"best_ns\":%llu,\"p50_ns\":%llu,\"p95_ns\":%llu,"
+                 "\"p99_ns\":%llu,\"throughput_b_v_s\":%.6f,\"label\":\"%s\"}\n",
+                 simd_path_name(active_simd_path()),
+                 rows,
+                 iters,
+                 static_cast<unsigned long long>(best_secs * 1e9),
+                 static_cast<unsigned long long>(p50),
+                 static_cast<unsigned long long>(p95),
+                 static_cast<unsigned long long>(p99),
+                 tput / 1e9,
+                 env_bench_label("default"));
+    std::fclose(f);
+}
+} // namespace
+
 int main() {
     const std::size_t rows = env_rows(100'000'000);
     const int iters = env_iters(5);
@@ -63,5 +96,7 @@ int main() {
                 static_cast<unsigned long long>(p95),
                 static_cast<unsigned long long>(p99));
     std::printf("  result sum            : %lld\n", static_cast<long long>(last_sum));
+
+    emit_json(env_json_out(), rows, iters, best_secs, p50, p95, p99);
     return 0;
 }

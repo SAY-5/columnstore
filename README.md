@@ -171,6 +171,44 @@ Honest reading of the 4.1B values/sec claim:
 
 CI `bench-smoke` asserts a 100M v/s floor and currently exceeds it by 13x.
 
+### Scaling table (1M / 10M / 100M)
+
+Captured on the local ARM dev host with the scalar path active; the layout is
+identical on x86_64 CI.  Files: `bench/results/local_1m.jsonl`,
+`local_10m.jsonl`, `local_100m.jsonl`. CI emits the same fields per run via
+`COLUMNSTORE_BENCH_JSON_OUT` and the `bench-regress` job compares against
+`bench/results/ci_baseline.jsonl` with a 30% drift threshold on both
+throughput and P99.
+
+| operator         | 1M B v/s | 10M B v/s | 100M B v/s | 100M P99 ns |
+| ---------------- | -------- | --------- | ---------- | ----------- |
+| filter_gt_avx2   | 2.338    | 2.303     | 2.361      | 44,006,125  |
+| filter_gt_scalar | 2.401    | 2.292     | 2.387      | 42,143,334  |
+| sum_avx2         | 21.39    | 14.82     | 13.36      | 7,890,125   |
+| sum_scalar       | 21.30    | 14.14     | 14.61      | 7,626,375   |
+| scan (pipeline)  | 1.356    | 1.307     | 1.370      | 76,313,500  |
+
+Throughput peaks at 1M (cache-resident) and degrades into DRAM-bound territory
+above L2 working sets, exactly as the kernel-vs-pipeline split predicts. The
+filter kernel is bandwidth-bound on this host across all three sizes; the sum
+kernel is compute-bound at 1M and bandwidth-bound at 100M.
+
+### Cache-line padding study
+
+`bench/padding_bench.cpp` measures whether forcing 64-byte alignment on the
+per-column descriptor (Batch/Column metadata) moves the needle on a tight
+multi-column scan loop. Result on the local host
+(`bench/results/padding_local.jsonl`):
+
+| layout            | sizeof | 12.8M-row best ms | B v/s |
+| ----------------- | ------ | ----------------- | ----- |
+| default-aligned   | 16     | 32.58             | 0.393 |
+| 64B-aligned       | 64     | 31.48             | 0.407 |
+
+A ~3% improvement, within noise. Quadrupling per-column metadata size to pad
+to a cache line is not worth it for this workload; the data path (the actual
+column buffers) already dominates the loads.
+
 ## What this is not
 
 - No SQL frontend (deferred to v4). The pipeline is built from C++.

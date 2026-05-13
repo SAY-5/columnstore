@@ -25,6 +25,20 @@ inline int env_iters(int default_iters) {
     return default_iters;
 }
 
+// When set to a file path, benches append a one-line JSON record describing
+// the run (rows, iters, simd path, per-operator best/p50/p95/p99 ns and
+// throughput). Used by `make bench-regress`.
+inline const char* env_json_out() {
+    return std::getenv("COLUMNSTORE_BENCH_JSON_OUT");
+}
+
+inline const char* env_bench_label(const char* fallback) {
+    if (const char* env = std::getenv("COLUMNSTORE_BENCH_LABEL")) {
+        return env;
+    }
+    return fallback;
+}
+
 inline std::vector<int32_t> synth_int32(std::size_t n, uint64_t seed) {
     std::vector<int32_t> v;
     v.reserve(n);

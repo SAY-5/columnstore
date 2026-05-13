@@ -1,4 +1,4 @@
-.PHONY: all build test bench fuzz clean format check-format asan scalar release
+.PHONY: all build test bench bench-regress bench-json fuzz clean format check-format asan scalar release
 
 BUILD_DIR ?= build
 
@@ -31,6 +31,33 @@ bench: build
 	$(BUILD_DIR)/scan_bench
 	$(BUILD_DIR)/filter_bench
 	$(BUILD_DIR)/aggregate_bench
+
+# Emit a JSON-lines candidate file by running every bench across 1M, 10M, 100M
+# rows. Set COLUMNSTORE_BENCH_JSON_OUT and COLUMNSTORE_BENCH_LABEL externally
+# to control the output file.
+bench-json: build
+	@echo "writing JSON to $${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl}"
+	@rm -f $${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl}
+	@for n in 1000000 10000000 100000000; do \
+		COLUMNSTORE_BENCH_ROWS=$$n COLUMNSTORE_BENCH_ITERS=5 \
+		COLUMNSTORE_BENCH_JSON_OUT=$${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl} \
+		$(BUILD_DIR)/filter_bench > /dev/null; \
+		COLUMNSTORE_BENCH_ROWS=$$n COLUMNSTORE_BENCH_ITERS=5 \
+		COLUMNSTORE_BENCH_JSON_OUT=$${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl} \
+		$(BUILD_DIR)/aggregate_bench > /dev/null; \
+		COLUMNSTORE_BENCH_ROWS=$$n COLUMNSTORE_BENCH_ITERS=5 \
+		COLUMNSTORE_BENCH_JSON_OUT=$${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl} \
+		$(BUILD_DIR)/scan_bench > /dev/null; \
+	done
+	@wc -l $${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl}
+
+# Compare a freshly-generated candidate to the committed baseline. Fails if
+# any operator regresses throughput or p99 latency by more than 30%.
+bench-regress: bench-json
+	@python3 bench/regress.py \
+		--baseline bench/results/baseline.jsonl \
+		--candidate $${COLUMNSTORE_BENCH_JSON_OUT:-/tmp/bench_candidate.jsonl} \
+		--max-drift 0.30
 
 clean:
 	rm -rf build build-*

@@ -192,6 +192,48 @@ jobs:
           echo "line coverage: $pct%"
           awk -v p="$pct" 'BEGIN { if (p+0 < 70.0) { print "FAIL: coverage " p "% below 70% floor"; exit 1 } else { print "PASS: coverage " p "% >= 70%" } }'
 
+  bench-regress:
+    runs-on: ubuntu-22.04
+    needs: [build-x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: build benches
+        run: cmake --build build --target scan_bench filter_bench aggregate_bench -j
+      - name: generate candidate at 1M, 10M
+        # Note: 100M takes too long for CI smoke; we run that locally and
+        # commit results. The CI regression gate covers 1M and 10M sizes.
+        run: |
+          rm -f /tmp/cand.jsonl
+          for n in 1000000 10000000; do
+            COLUMNSTORE_BENCH_ROWS=$n COLUMNSTORE_BENCH_ITERS=5 \
+              COLUMNSTORE_BENCH_JSON_OUT=/tmp/cand.jsonl \
+              COLUMNSTORE_BENCH_LABEL=ci \
+              ./build/filter_bench > /dev/null
+            COLUMNSTORE_BENCH_ROWS=$n COLUMNSTORE_BENCH_ITERS=5 \
+              COLUMNSTORE_BENCH_JSON_OUT=/tmp/cand.jsonl \
+              COLUMNSTORE_BENCH_LABEL=ci \
+              ./build/aggregate_bench > /dev/null
+            COLUMNSTORE_BENCH_ROWS=$n COLUMNSTORE_BENCH_ITERS=5 \
+              COLUMNSTORE_BENCH_JSON_OUT=/tmp/cand.jsonl \
+              COLUMNSTORE_BENCH_LABEL=ci \
+              ./build/scan_bench > /dev/null
+          done
+          echo "--- candidate jsonl ---"
+          cat /tmp/cand.jsonl
+      - name: run regression gate
+        run: |
+          python3 bench/regress.py \
+            --baseline bench/results/ci_baseline.jsonl \
+            --candidate /tmp/cand.jsonl \
+            --max-drift 0.30
+      - name: upload candidate as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-candidate
+          path: /tmp/cand.jsonl
+
   docker:
     runs-on: ubuntu-22.04
     steps:
